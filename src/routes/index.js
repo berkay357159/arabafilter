@@ -7,6 +7,7 @@ const {
   fetchArabamModelsByBrand,
   fetchSahibindenModelsByBrand
 } = require('../services/providers');
+// Marka/model kaynağı: arabam.com (sahibinden anti-bot nedeniyle güvenilmez)
 const { analyzePricing } = require('../services/pricing');
 
 const router = express.Router();
@@ -36,27 +37,12 @@ router.get('/', (req, res) => {
 });
 
 router.get('/api/brands', async (req, res) => {
+  // Yalnızca arabam.com'dan çek — sahibinden anti-bot koruması nedeniyle atlandı
   try {
-    const results = await Promise.allSettled([fetchArabamBrands(), fetchSahibindenBrands()]);
-
-    const lists = results
-      .filter((r) => r.status === 'fulfilled' && Array.isArray(r.value))
-      .map((r) => r.value);
-
-    if (!lists.length) {
-      return res.status(500).json({ error: 'Marka listesi alınamadı.' });
+    const brands = await fetchArabamBrands();
+    if (!brands || !brands.length) {
+      return res.status(500).json({ error: 'arabam.com marka listesi alınamadı.' });
     }
-
-    const map = new Map();
-    for (const list of lists) {
-      for (const item of list) {
-        const slug = String(item.slug || '').toLowerCase();
-        if (!slug) continue;
-        if (!map.has(slug)) map.set(slug, item);
-      }
-    }
-
-    const brands = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
     return res.json({ brands });
   } catch (error) {
     return res.status(500).json({
@@ -66,6 +52,7 @@ router.get('/api/brands', async (req, res) => {
 });
 
 router.get('/api/models', async (req, res) => {
+  // arabam.com'dan marka bazlı modelleri çek
   const brand = String(req.query.brand || '').trim().toLowerCase();
 
   if (!brand) {
@@ -74,7 +61,7 @@ router.get('/api/models', async (req, res) => {
 
   try {
     const models = await fetchArabamModelsByBrand(brand);
-    // models is an array of { model, modelSlug, versions: [{label,value}] }
+    // models => [{ model, modelSlug, versions: [{label, versionSlug, baseValue, packages}] }]
     return res.json({ models });
   } catch (error) {
     return res.status(500).json({

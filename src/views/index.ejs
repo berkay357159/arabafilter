@@ -29,15 +29,8 @@
 
           <label>
             Versiyon
-            <select id="modelSelect" required disabled>
+            <select id="versionSelect" name="model" required disabled data-selected-version="<%= form.model || '' %>">
               <option value="">Önce model seçin</option>
-            </select>
-          </label>
-
-          <label>
-            Paket
-            <select id="packageSelect" name="model" required disabled data-selected-version="<%= form.model || '' %>">
-              <option value="">Önce versiyon seçin</option>
             </select>
           </label>
 
@@ -110,21 +103,18 @@
       (function () {
         const brandSelect = document.getElementById('brandSelect');
         const modelGroupSelect = document.getElementById('modelGroupSelect');
-        const versionSelect = document.getElementById('modelSelect');
-        const packageSelect = document.getElementById('packageSelect');
-        if (!brandSelect || !modelGroupSelect || !versionSelect || !packageSelect) return;
+        const versionSelect = document.getElementById('versionSelect');
+        if (!brandSelect || !modelGroupSelect || !versionSelect) return;
 
         const selectedBrand = (brandSelect.dataset.selectedBrand || '').toLowerCase();
-        const selectedFull = (packageSelect.dataset.selectedVersion || '');
+        const selectedFull = (versionSelect.dataset.selectedVersion || '');
 
         function renderOptions(selectEl, options, placeholder) {
           selectEl.innerHTML = '';
-
           const defaultOption = document.createElement('option');
           defaultOption.value = '';
           defaultOption.textContent = placeholder;
           selectEl.appendChild(defaultOption);
-
           options.forEach((item) => {
             const option = document.createElement('option');
             option.value = item.value;
@@ -135,6 +125,21 @@
 
         let cachedModels = [];
 
+        // Versiyon + paketleri düzleştirilmiş tek liste olarak döndürür
+        function flattenVersions(versions) {
+          const flat = [];
+          for (const ver of (versions || [])) {
+            if ((ver.packages || []).length) {
+              for (const pkg of ver.packages) {
+                flat.push({ value: pkg.value, label: pkg.value });
+              }
+            } else {
+              flat.push({ value: ver.baseValue, label: ver.baseValue });
+            }
+          }
+          return flat;
+        }
+
         async function loadBrands() {
           try {
             const response = await fetch('/api/brands');
@@ -143,10 +148,8 @@
               value: brand.slug,
               label: brand.name
             }));
-
             renderOptions(brandSelect, brands, 'Marka seçin');
             brandSelect.disabled = false;
-
             if (selectedBrand) {
               brandSelect.value = selectedBrand;
               await loadModels(selectedBrand);
@@ -172,36 +175,21 @@
           try {
             const response = await fetch(`/api/models?brand=${encodeURIComponent(brandSlug)}`);
             const payload = await response.json();
-            // payload.models => [{ model, modelSlug, versions: [{label,versionSlug,baseValue,packages:[{label,value}]}] }]
             cachedModels = payload.models || [];
 
             const modelOptions = cachedModels.map((m) => ({ value: m.modelSlug, label: m.model }));
             renderOptions(modelGroupSelect, modelOptions, modelOptions.length ? 'Model seçin' : 'Model bulunamadı');
             modelGroupSelect.disabled = modelOptions.length === 0;
 
-            // if we already have a previously selected full model+package string, try to preselect
+            // Önceki seçimi geri yükle
             if (selectedFull) {
               for (const m of cachedModels) {
-                for (const ver of (m.versions || [])) {
-                  // check base value
-                  if (ver.baseValue === selectedFull) {
-                    modelGroupSelect.value = m.modelSlug;
-                    loadVersionsForModel(m.modelSlug);
-                    versionSelect.value = ver.versionSlug;
-                    loadPackagesForVersion(m.modelSlug, ver.versionSlug);
-                    return;
-                  }
-
-                  // check packages
-                  const pkg = (ver.packages || []).find((p) => p.value === selectedFull);
-                  if (pkg) {
-                    modelGroupSelect.value = m.modelSlug;
-                    loadVersionsForModel(m.modelSlug);
-                    versionSelect.value = ver.versionSlug;
-                    loadPackagesForVersion(m.modelSlug, ver.versionSlug);
-                    packageSelect.value = pkg.value;
-                    return;
-                  }
+                const flat = flattenVersions(m.versions);
+                if (flat.find((f) => f.value === selectedFull)) {
+                  modelGroupSelect.value = m.modelSlug;
+                  loadVersionsForModel(m.modelSlug);
+                  versionSelect.value = selectedFull;
+                  return;
                 }
               }
             }
@@ -218,36 +206,9 @@
             versionSelect.disabled = true;
             return;
           }
-
-          const versions = (model.versions || []).map((v) => ({ value: v.versionSlug, label: v.label }));
-          renderOptions(versionSelect, versions, versions.length ? 'Versiyon seçin' : 'Versiyon bulunamadı');
-          versionSelect.disabled = versions.length === 0;
-
-          // reset package select until a version is chosen
-          renderOptions(packageSelect, [], 'Önce versiyon seçin');
-          packageSelect.disabled = true;
-        }
-
-        function loadPackagesForVersion(modelSlug, versionSlug) {
-          const model = cachedModels.find((m) => m.modelSlug === modelSlug);
-          if (!model) return;
-          const ver = (model.versions || []).find((v) => v.versionSlug === versionSlug);
-          if (!ver) {
-            renderOptions(packageSelect, [], 'Önce versiyon seçin');
-            packageSelect.disabled = true;
-            return;
-          }
-
-          const packages = (ver.packages || []).length
-            ? (ver.packages || []).map((p) => ({ value: p.value, label: p.label }))
-            : [{ value: ver.baseValue, label: ver.label }];
-
-          renderOptions(packageSelect, packages, packages.length ? 'Paket seçin' : 'Paket bulunamadı');
-          packageSelect.disabled = packages.length === 0;
-
-          if (selectedFull) {
-            packageSelect.value = selectedFull;
-          }
+          const flat = flattenVersions(model.versions);
+          renderOptions(versionSelect, flat, flat.length ? 'Versiyon seçin' : 'Versiyon bulunamadı');
+          versionSelect.disabled = flat.length === 0;
         }
 
         brandSelect.addEventListener('change', (event) => {
@@ -256,10 +217,6 @@
 
         modelGroupSelect.addEventListener('change', (event) => {
           loadVersionsForModel(event.target.value);
-        });
-
-        versionSelect.addEventListener('change', (event) => {
-          loadPackagesForVersion(modelGroupSelect.value, event.target.value);
         });
 
         loadBrands();

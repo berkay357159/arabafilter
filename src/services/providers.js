@@ -167,38 +167,64 @@ async function fetchArabamBrands() {
     return brandCache.value;
   }
 
-  const url = 'https://www.arabam.com/ikinci-el/tum-markalar';
-  const html = await fetchHtml(url);
-  const $ = cheerio.load(html);
+  // arabam.com'dan marka listesini çekmeye çalışılacak URL'ler
+  const candidates = [
+    'https://www.arabam.com/ikinci-el/otomobil',
+    'https://www.arabam.com/ikinci-el/tum-markalar'
+  ];
+
   const items = new Map();
 
-  $('.tab-content-item a[href*="/ikinci-el/otomobil/"]').each((_, element) => {
-    const href = ($(element).attr('href') || '').trim();
-    const absoluteHref = href.startsWith('http') ? href : `https://www.arabam.com${href}`;
+  for (const url of candidates) {
+    try {
+      const html = await fetchHtml(url);
+      const $ = cheerio.load(html);
 
-    const pathMatch = absoluteHref.match(/\/ikinci-el\/otomobil\/([a-z0-9-]+)$/i);
-    if (!pathMatch) return;
+      // Cheerio ile önce otomobil linklerini ara
+      $('a[href*="/ikinci-el/otomobil/"]').each((_, element) => {
+        const href = ($(element).attr('href') || '').trim();
+        const absoluteHref = href.startsWith('http') ? href : `https://www.arabam.com${href}`;
+        const pathMatch = absoluteHref.match(/\/ikinci-el\/otomobil\/([a-z0-9-]+)$/i);
+        if (!pathMatch) return;
 
-    const slug = pathMatch[1].toLowerCase();
-    if (!slug || slug.includes('sahibinden')) return;
+        const slug = pathMatch[1].toLowerCase();
+        if (!slug || slug.includes('sahibinden')) return;
 
-    const anchorText = $(element).text().replace(/\s+/g, ' ').trim();
-      const normalizedText = anchorText
-        .replace(/^İkinci El\s+/i, '')
-        .replace(/\s+Fiyatlar[ıi]$/i, '')
-        .replace(/\s*\(\s*[\d.,]+\s*\)\s*$/i, '')
-        .trim();
+        const anchorText = $(element).text().replace(/\s+/g, ' ').trim();
+        const normalizedText = anchorText
+          .replace(/^İkinci El\s+/i, '')
+          .replace(/\s+Fiyatlar[\u0131i]$/i, '')
+          .replace(/\s*\(\s*[\d.,]+\s*\)\s*$/i, '')
+          .trim();
 
-    const name = normalizedText || slugToTitle(slug);
-
-    if (!items.has(slug)) {
-      items.set(slug, {
-        slug,
-        name,
-        url: absoluteHref
+        const name = normalizedText || slugToTitle(slug);
+        if (!items.has(slug)) {
+          items.set(slug, { slug, name, url: absoluteHref });
+        }
       });
+
+      // Cheerio bulamazsa regex fallback
+      if (!items.size) {
+        const regex = /\/ikinci-el\/otomobil\/([a-z0-9-]+)/gi;
+        let m;
+        while ((m = regex.exec(html)) !== null) {
+          const slug = (m[1] || '').toLowerCase();
+          if (!slug || slug.includes('sahibinden')) continue;
+          if (!items.has(slug)) {
+            items.set(slug, {
+              slug,
+              name: slugToTitle(slug),
+              url: `https://www.arabam.com/ikinci-el/otomobil/${slug}`
+            });
+          }
+        }
+      }
+
+      if (items.size) break; // ilk başarılı URL yeterli
+    } catch (e) {
+      // sonraki URL'yi dene
     }
-  });
+  }
 
   const brands = [...items.values()]
     .filter((item) => {
@@ -207,8 +233,12 @@ async function fetchArabamBrands() {
       return !items.has(rootSlug);
     })
     .sort((left, right) => left.name.localeCompare(right.name, 'tr'));
-  brandCache.value = brands;
-  brandCache.expiresAt = Date.now() + CACHE_TTL_MS;
+
+  if (brands.length) {
+    brandCache.value = brands;
+    brandCache.expiresAt = Date.now() + CACHE_TTL_MS;
+  }
+
   return brands;
 }
 
@@ -304,6 +334,77 @@ function extractAdvertSlugs(html) {
   return [...slugs];
 }
 
+// İlan slug'larındaki ve kategori linklerindeki anlamsız token'ları temizler.
+// "satilik", "galeriden", "yetkili", "bayiden", uzun sayılar vb. çöp kelimeleri kapsar.
+const SLUG_STOP_WORDS = new Set([
+  'satilik', 'ikinci', 'el', 'otomobil', 'temiz', 'kullanilmis', 'hatasiz',
+  'sahibinden', 'yeni', 'galeriden', 'yetkili', 'bayiden', 'galerist',
+  'bayi', 'galeri', 'ultimate', 'gs'
+]);
+
+function cleanAdvertRemainder(remainder) {
+  const parts = remainder.split('-').filter(Boolean);
+  const meaningful = [];
+  for (const part of parts) {
+    if (/^\d+$/.test(part) && part.length >= 5) break; // uzun ID sayısı
+    if (SLUG_STOP_WORDS.has(part.toLowerCase())) break;  // çöp kelime
+    meaningful.push(part);
+  }
+  return meaningful.join('-');
+}
+
+// Versiyon slug'ındaki stop word içeren her token'ı ve sonrasını kırpar
+function cleanVersionSlug(slug) {
+  const parts = slug.split('-').filter(Boolean);
+  const meaningful = [];
+  for (const part of parts) {
+    if (/^\d+$/.test(part) && part.length >= 5) break; // uzun ID sayısı
+    if (SLUG_STOP_WORDS.has(part.toLowerCase())) break;
+    meaningful.push(part);
+  }
+  return meaningful.join('-');
+}
+
+// Model sayfasındaki kategori linklerinden versiyon slug'larını çeker.
+// Örneğin /ikinci-el/otomobil/opel-corsa-1-4-twinport-enjoy -> "1-4-twinport-enjoy"
+function extractVersionSlugsFromModelPage(html, brandSlug, modelSlug) {
+  const prefix = `${brandSlug}-${modelSlug}-`;
+  const $ = cheerio.load(html);
+  const found = new Map();
+
+  $('a[href*="/ikinci-el/"]').each((_, element) => {
+    const href = ($(element).attr('href') || '').trim();
+    if (!href) return;
+    const absoluteHref = href.startsWith('http') ? href : `https://www.arabam.com${href}`;
+    const match = absoluteHref.match(/\/ikinci-el\/[a-z0-9-]+\/([a-z0-9-]+)(?:$|[\/?#])/i);
+    if (!match) return;
+    const slug = (match[1] || '').toLowerCase();
+    if (!slug.startsWith(prefix)) return;
+    if (slug.endsWith('-sahibinden')) return;
+    const rawVersion = slug.slice(prefix.length);
+    const versionSlug = cleanVersionSlug(rawVersion);
+    if (versionSlug && !found.has(versionSlug)) {
+      found.set(versionSlug, true);
+    }
+  });
+
+  // Regex fallback: href olmayan ama HTML içinde geçen prefix
+  if (!found.size) {
+    const escapedPrefix = prefix.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const re = new RegExp(`${escapedPrefix}([a-z0-9]+(?:-[a-z0-9]+)*)`, 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const rawVersion = (m[1] || '').toLowerCase();
+      const versionSlug = cleanVersionSlug(rawVersion);
+      if (versionSlug && !found.has(versionSlug)) {
+        found.set(versionSlug, true);
+      }
+    }
+  }
+
+  return [...found.keys()];
+}
+
 function extractBrandModelSlugs(html, brandSlug) {
   const $ = cheerio.load(html);
   const map = new Map();
@@ -342,31 +443,48 @@ async function fetchArabamModelsByBrand(brandSlugInput) {
   }
 
   const brandDisplayName = slugToTitle(brandSlug);
-  const searchText = brandSlug.replace(/-/g, ' ');
-  const searchUrl = `https://www.arabam.com/ikinci-el?searchText=${encodeURIComponent(searchText)}`;
-  const html = await fetchHtml(searchUrl);
 
-  let modelSources = extractBrandModelSlugs(html, brandSlug);
+  // Arabam.com'dan modelleri çekmek için denlenecek URL'ler (öncelik sırasıyla)
+  const candidateUrls = [
+    `https://www.arabam.com/ikinci-el/otomobil/${brandSlug}`,
+    `https://www.arabam.com/ikinci-el?searchText=${encodeURIComponent(brandSlug.replace(/-/g, ' '))}`
+  ];
 
-  // Fallback: some sayfa yapılarında linkler farklı olabilir; ham HTML içinde regex ile de ara
-  if (!modelSources.length) {
+  let modelSources = [];
+
+  for (const pageUrl of candidateUrls) {
     try {
-      const escapedBrand = brandSlug.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-      const regex = new RegExp(`\/ikinci-el\/[a-z0-9-]+\/(${escapedBrand}-[a-z0-9-]+)`, 'gi');
-      const found = new Map();
-      let m;
-      while ((m = regex.exec(html)) !== null) {
-        const slug = (m[1] || '').toLowerCase();
-        if (slug && !found.has(slug) && !slug.endsWith('-sahibinden')) {
-          found.set(slug, `https://www.arabam.com/ikinci-el/${slug}`);
+      const html = await fetchHtml(pageUrl);
+
+      // Yöntem 1: Cheerio ile {brandSlug}-model linklerini bul
+      let sources = extractBrandModelSlugs(html, brandSlug);
+
+      // Yöntem 2: Regex fallback — daha geniş tarama
+      if (!sources.length) {
+        const escapedBrand = brandSlug.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(
+          `href=["']?(?:https://www\\.arabam\\.com)?/ikinci-el/[a-z0-9-]+/(${escapedBrand}-[a-z0-9]+(?:-[a-z0-9]+)*)`,
+          'gi'
+        );
+        const found = new Map();
+        let m;
+        while ((m = regex.exec(html)) !== null) {
+          const slug = (m[1] || '').toLowerCase();
+          if (slug && !found.has(slug) && !slug.endsWith('-sahibinden')) {
+            found.set(slug, `https://www.arabam.com/ikinci-el/otomobil/${slug}`);
+          }
+        }
+        if (found.size) {
+          sources = [...found.entries()].map(([slug, url]) => ({ slug, url }));
         }
       }
 
-      if (found.size) {
-        modelSources = [...found.entries()].map(([slug, url]) => ({ slug, url }));
+      if (sources.length) {
+        modelSources = sources;
+        break; // ilk başarılı URL yeterli
       }
     } catch (e) {
-      // ignore fallback errors
+      // sonraki URL'yi dene
     }
   }
 
@@ -387,63 +505,64 @@ async function fetchArabamModelsByBrand(brandSlugInput) {
     if (modelUrl) {
       try {
         const modelHtml = await fetchHtml(modelUrl);
-        const advertSlugs = extractAdvertSlugs(modelHtml);
 
-        // versionsMap: versionToken -> { versionSlug, label, baseValue, packages: Map }
-        const versionsMap = new Map();
+        // 1. Kademe: Model sayfasından motor versiyonlarını çek (örn: 1-4-twinport)
+        let topLevelSlugs = extractVersionSlugsFromModelPage(modelHtml, brandSlug, modelSlug);
 
-        advertSlugs.forEach((advertSlug) => {
+        // Bulunamadıysa ilan fallback
+        if (!topLevelSlugs.length) {
+          const advertSlugs = extractAdvertSlugs(modelHtml);
           const marker = `${brandSlug}-${modelSlug}-`;
-          const markerIndex = advertSlug.indexOf(marker);
-          if (markerIndex < 0) return;
+          const cleaned = new Set();
+          advertSlugs.forEach((advertSlug) => {
+            const idx = advertSlug.indexOf(marker);
+            if (idx < 0) return;
+            const raw = advertSlug.slice(idx + marker.length);
+            const cl = cleanAdvertRemainder(raw);
+            if (cl) cleaned.add(cl);
+          });
+          topLevelSlugs = [...cleaned];
+        }
 
-          const remainder = advertSlug.slice(markerIndex + marker.length).trim();
-          if (!remainder) return;
+        // 2. Kademe: Her motor versiyonunun kendi sayfasından paket linklerini çek
+        // Örn: opel-corsa-1-4-twinport sayfasından -> enjoy, comfort, edition vb.
+        const flatSlugs = new Set();
 
-          const parts = remainder.split('-').filter(Boolean);
-          if (!parts.length) return;
-
-          const versionToken = parts[0];
-          const packageTokens = parts.slice(1);
-
-          const versionLabel = prettifySlugText(versionToken);
-          const baseFullLabel = `${brandDisplayName} ${modelLabel} ${versionLabel}`.trim();
-          const baseValue = baseFullLabel;
-
-          if (!versionsMap.has(versionToken)) {
-            versionsMap.set(versionToken, {
-              versionSlug: versionToken,
-              label: versionLabel,
-              baseValue,
-              packages: new Map()
-            });
+        for (const vs of topLevelSlugs) {
+          const versionPageUrl = `https://www.arabam.com/ikinci-el/otomobil/${brandSlug}-${modelSlug}-${vs}`;
+          let subSlugs = [];
+          try {
+            const versionHtml = await fetchHtml(versionPageUrl);
+            // Bu sayfadaki linkler brandSlug-modelSlug-vs- ile başlıyor
+            subSlugs = extractVersionSlugsFromModelPage(versionHtml, brandSlug, modelSlug);
+            // Sadece bu vs prefix'iyle başlayanları al (paketler: vs-enjoy, vs-comfort vb.)
+            subSlugs = subSlugs.filter((s) => s.startsWith(vs + '-') || s === vs);
+          } catch (e) {
+            // erişilemezse sadece üst seviyeyi kullan
           }
 
-          if (packageTokens.length) {
-            const packageSlug = packageTokens.join('-');
-            const packageLabel = prettifySlugText(packageSlug);
-            const packageValue = `${baseFullLabel} ${packageLabel}`.trim();
-            const ver = versionsMap.get(versionToken);
-            if (!ver.packages.has(packageSlug)) {
-              ver.packages.set(packageSlug, { packageSlug, label: packageLabel, value: packageValue });
-            }
+          if (subSlugs.length) {
+            subSlugs.forEach((s) => flatSlugs.add(s));
           } else {
-            // ensure base version exists even if no package
-            // already ensured when map entry created
+            flatSlugs.add(vs); // alt sayfa yoksa veya erişilemediyse üst seviyeyi ekle
           }
-        });
+        }
 
-        // convert versionsMap to versions array for this model
-        versionsArr = [];
-        for (const [vslug, vobj] of versionsMap.entries()) {
-          const packagesArr = [...vobj.packages.values()];
-          versionsArr.push({
-            label: vobj.label,
-            versionSlug: vobj.versionSlug,
-            baseValue: vobj.baseValue,
-            packages: packagesArr
+        // Tüm slug'lardan düzleştirilmiş versiyon listesi oluştur
+        const versionsMap = new Map();
+        for (const vs of flatSlugs) {
+          if (versionsMap.has(vs)) continue;
+          const versionLabel = prettifySlugText(vs);
+          const baseValue = `${brandDisplayName} ${modelLabel} ${versionLabel}`.trim();
+          versionsMap.set(vs, {
+            label: versionLabel,
+            versionSlug: vs,
+            baseValue,
+            packages: []
           });
         }
+
+        versionsArr = [...versionsMap.values()];
       } catch (e) {
         // ignore per-model fetch errors
       }
