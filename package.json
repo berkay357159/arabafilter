@@ -1,0 +1,26 @@
+{
+  "name": "arac-fiyat-paneli",
+  "version": "1.0.0",
+  "description": "Araç bilgilerine göre sahibinden.com ve arabam.com ilanlarından ortalama fiyat analizi",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "electron src/desktop/main.js",
+    "dev": "nodemon src/app.js",
+    "desktop": "electron src/desktop/main.js"
+  },
+  "dependencies": {
+    "axios": "^1.8.2",
+    "cheerio": "^1.0.0",
+    "puppeteer-core": "^20.8.1",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

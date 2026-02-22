@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Araç Fiyat Paneli</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Araç Fiyat Paneli</h1>
+      <p class="subtitle">Marka ve modeli listeden seçin, ilan kaynaklarından ortalama fiyat ve %10 kârla satış fiyatını görün.</p>
+
+      <form action="/analyze" method="POST" class="panel">
+        <div class="grid">
+          <label>
+            Marka
+            <select id="brandSelect" name="brand" required data-selected-brand="<%= form.brand || '' %>">
+              <option value="">Yükleniyor...</option>
+            </select>
+          </label>
+
+          <label>
+            Model
+            <select id="modelGroupSelect" required disabled>
+              <option value="">Önce marka seçin</option>
+            </select>
+          </label>
+
+          <label>
+            Versiyon
+            <select id="modelSelect" required disabled>
+              <option value="">Önce model seçin</option>
+            </select>
+          </label>
+
+          <label>
+            Paket
+            <select id="packageSelect" name="model" required disabled data-selected-version="<%= form.model || '' %>">
+              <option value="">Önce versiyon seçin</option>
+            </select>
+          </label>
+
+          <label>
+            KM
+            <input type="number" min="0" step="1000" name="km" value="<%= form.km %>" placeholder="Örn: 145000" />
+          </label>
+
+          <label>
+            Değişen Parça Sayısı
+            <input type="number" min="0" name="degisenSayisi" value="<%= form.degisenSayisi %>" />
+          </label>
+
+          <label>
+            Hasar Kaydı (TL)
+            <input type="number" min="0" step="1000" name="hasarKaydiTl" value="<%= form.hasarKaydiTl %>" />
+          </label>
+
+          <label>
+            Boyalı Parça Sayısı
+            <input type="number" min="0" name="boyaSayisi" value="<%= form.boyaSayisi %>" />
+          </label>
+        </div>
+
+        <button type="submit">Fiyat Analizi Yap</button>
+      </form>
+
+      <% if (error) { %>
+      <section class="alert"><%= error %></section>
+      <% } %>
+
+      <% if (result) { %>
+      <section class="panel results">
+        <h2>Sonuçlar</h2>
+        <div class="cards">
+          <article>
+            <h3>Piyasa Ortalama Fiyat</h3>
+            <strong><%= result.formatted.marketAverage %></strong>
+          </article>
+          <article>
+            <h3>Duruma Göre Düzeltilmiş</h3>
+            <strong><%= result.formatted.adjustedPrice %></strong>
+            <% if (result.adjustmentPercent !== null) { %>
+            <span><%= result.adjustmentPercent %>% düzeltme</span>
+            <% } %>
+          </article>
+          <article>
+            <h3>%10 Kârla Satış Fiyatı</h3>
+            <strong><%= result.formatted.salePriceWithProfit %></strong>
+          </article>
+        </div>
+
+        <h3>Kaynaklar</h3>
+        <ul class="sources">
+          <% result.providers.forEach((provider) => { %>
+          <li>
+            <span><%= provider.source %></span>
+            <span><%= provider.prices.length %> fiyat bulundu</span>
+            <a href="<%= provider.url %>" target="_blank" rel="noreferrer">İlanları aç</a>
+          </li>
+          <% }) %>
+        </ul>
+      </section>
+      <% } %>
+
+      <p class="note">Not: İlan sitelerinin yapı veya erişim politikaları değiştiğinde fiyat çekme sonuçları etkilenebilir.</p>
+    </main>
+
+    <script>
+      (function () {
+        const brandSelect = document.getElementById('brandSelect');
+        const modelGroupSelect = document.getElementById('modelGroupSelect');
+        const versionSelect = document.getElementById('modelSelect');
+        const packageSelect = document.getElementById('packageSelect');
+        if (!brandSelect || !modelGroupSelect || !versionSelect || !packageSelect) return;
+
+        const selectedBrand = (brandSelect.dataset.selectedBrand || '').toLowerCase();
+        const selectedFull = (packageSelect.dataset.selectedVersion || '');
+
+        function renderOptions(selectEl, options, placeholder) {
+          selectEl.innerHTML = '';
+
+          const defaultOption = document.createElement('option');
+          defaultOption.value = '';
+          defaultOption.textContent = placeholder;
+          selectEl.appendChild(defaultOption);
+
+          options.forEach((item) => {
+            const option = document.createElement('option');
+            option.value = item.value;
+            option.textContent = item.label;
+            selectEl.appendChild(option);
+          });
+        }
+
+        let cachedModels = [];
+
+        async function loadBrands() {
+          try {
+            const response = await fetch('/api/brands');
+            const payload = await response.json();
+            const brands = (payload.brands || []).map((brand) => ({
+              value: brand.slug,
+              label: brand.name
+            }));
+
+            renderOptions(brandSelect, brands, 'Marka seçin');
+            brandSelect.disabled = false;
+
+            if (selectedBrand) {
+              brandSelect.value = selectedBrand;
+              await loadModels(selectedBrand);
+            }
+          } catch (error) {
+            renderOptions(brandSelect, [], 'Markalar alınamadı');
+            brandSelect.disabled = true;
+          }
+        }
+
+        async function loadModels(brandSlug) {
+          modelGroupSelect.disabled = true;
+          versionSelect.disabled = true;
+          renderOptions(modelGroupSelect, [], 'Modeller yükleniyor...');
+          renderOptions(versionSelect, [], 'Önce model seçin');
+
+          if (!brandSlug) {
+            renderOptions(modelGroupSelect, [], 'Önce marka seçin');
+            modelGroupSelect.disabled = true;
+            return;
+          }
+
+          try {
+            const response = await fetch(`/api/models?brand=${encodeURIComponent(brandSlug)}`);
+            const payload = await response.json();
+            // payload.models => [{ model, modelSlug, versions: [{label,versionSlug,baseValue,packages:[{label,value}]}] }]
+            cachedModels = payload.models || [];
+
+            const modelOptions = cachedModels.map((m) => ({ value: m.modelSlug, label: m.model }));
+            renderOptions(modelGroupSelect, modelOptions, modelOptions.length ? 'Model seçin' : 'Model bulunamadı');
+            modelGroupSelect.disabled = modelOptions.length === 0;
+
+            // if we already have a previously selected full model+package string, try to preselect
+            if (selectedFull) {
+              for (const m of cachedModels) {
+                for (const ver of (m.versions || [])) {
+                  // check base value
+                  if (ver.baseValue === selectedFull) {
+                    modelGroupSelect.value = m.modelSlug;
+                    loadVersionsForModel(m.modelSlug);
+                    versionSelect.value = ver.versionSlug;
+                    loadPackagesForVersion(m.modelSlug, ver.versionSlug);
+                    return;
+                  }
+
+                  // check packages
+                  const pkg = (ver.packages || []).find((p) => p.value === selectedFull);
+                  if (pkg) {
+                    modelGroupSelect.value = m.modelSlug;
+                    loadVersionsForModel(m.modelSlug);
+                    versionSelect.value = ver.versionSlug;
+                    loadPackagesForVersion(m.modelSlug, ver.versionSlug);
+                    packageSelect.value = pkg.value;
+                    return;
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            renderOptions(modelGroupSelect, [], 'Model listesi alınamadı');
+            modelGroupSelect.disabled = true;
+          }
+        }
+
+        function loadVersionsForModel(modelSlug) {
+          const model = cachedModels.find((m) => m.modelSlug === modelSlug);
+          if (!model) {
+            renderOptions(versionSelect, [], 'Önce model seçin');
+            versionSelect.disabled = true;
+            return;
+          }
+
+          const versions = (model.versions || []).map((v) => ({ value: v.versionSlug, label: v.label }));
+          renderOptions(versionSelect, versions, versions.length ? 'Versiyon seçin' : 'Versiyon bulunamadı');
+          versionSelect.disabled = versions.length === 0;
+
+          // reset package select until a version is chosen
+          renderOptions(packageSelect, [], 'Önce versiyon seçin');
+          packageSelect.disabled = true;
+        }
+
+        function loadPackagesForVersion(modelSlug, versionSlug) {
+          const model = cachedModels.find((m) => m.modelSlug === modelSlug);
+          if (!model) return;
+          const ver = (model.versions || []).find((v) => v.versionSlug === versionSlug);
+          if (!ver) {
+            renderOptions(packageSelect, [], 'Önce versiyon seçin');
+            packageSelect.disabled = true;
+            return;
+          }
+
+          const packages = (ver.packages || []).length
+            ? (ver.packages || []).map((p) => ({ value: p.value, label: p.label }))
+            : [{ value: ver.baseValue, label: ver.label }];
+
+          renderOptions(packageSelect, packages, packages.length ? 'Paket seçin' : 'Paket bulunamadı');
+          packageSelect.disabled = packages.length === 0;
+
+          if (selectedFull) {
+            packageSelect.value = selectedFull;
+          }
+        }
+
+        brandSelect.addEventListener('change', (event) => {
+          loadModels(event.target.value);
+        });
+
+        modelGroupSelect.addEventListener('change', (event) => {
+          loadVersionsForModel(event.target.value);
+        });
+
+        versionSelect.addEventListener('change', (event) => {
+          loadPackagesForVersion(modelGroupSelect.value, event.target.value);
+        });
+
+        loadBrands();
+      })();
+    </script>
+  </body>
+</html>
