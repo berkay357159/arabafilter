@@ -125,7 +125,7 @@ router.get('/api/sahibinden/models', async (req, res) => {
     const models = await fetchSahibindenModelsByBrand(brand);
     return res.json({ models });
   } catch (error) {
-    return res.status(500).json({ error: `Sahibinden model listesi alınamadı: ${error.message}` });
+    return res.status(500).json({ error: `Sahibinden model listesi alinamadı: ${error.message}` });
   }
 });
 
