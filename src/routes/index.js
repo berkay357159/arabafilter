@@ -143,12 +143,7 @@ router.get('/api/prefetch', async (req, res) => {
     }
     const modelName = `${brand} ${modelSlug}`.trim();
     res.json({ status: 'started' });
-    // fetchSahibindenPrices(modelName, filters).catch(() => { });
-    // fetchArabamPrices(modelName, filters).catch(() => { });
-    // fetchCarvakPrices(modelName, filters).catch(() => { });
-    // fetchOtokocPrices(modelName, filters).catch(() => { });
-    // fetchOtoplusPrices(modelName, filters).catch(() => { });
-    // fetchBorusanPrices(modelName, filters).catch(() => { });
+
   } else {
     res.json({ status: 'ignored' });
   }
