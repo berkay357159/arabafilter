@@ -104,30 +104,118 @@ button {
   color: #4b5563;
 }
 
-.sources {
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
+.result-providers {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 
-.sources li {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 12px;
-  align-items: center;
+.provider-card {
+  background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 16px 16px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.sources a {
+.provider-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.provider-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  background: #d1d5db;
+}
+
+.provider-card[data-source*="sahibinden"]::before {
+  background: #ffe800;
+}
+
+.provider-card[data-source*="arabam"]::before {
+  background: #d0011b;
+}
+
+.provider-card[data-source*="carvak"]::before {
+  background: #00bef0;
+}
+
+.provider-card[data-source*="otokoc"]::before {
+  background: #004a99;
+}
+
+.provider-card[data-source*="otoplus"]::before {
+  background: #ff6a00;
+}
+
+.provider-card[data-source*="borusan"]::before {
+  background: #1a1a1a;
+}
+
+.provider-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: #111827;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+}
+
+.provider-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.price-count {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+}
+
+.price-count.no-results {
+  color: #9ca3af;
+}
+
+.price-count:not(.no-results) {
+  color: #059669;
+}
+
+.external-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
   color: #2563eb;
   text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.note {
-  color: #6b7280;
-  font-size: 13px;
+.external-link:hover {
+  text-decoration: underline;
+}
+
+.provider-card em {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1.4;
+  background: #fffbeb;
+  color: #92400e;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #fef3c7;
+  margin-top: 8px;
+  display: block;
 }

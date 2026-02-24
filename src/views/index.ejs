@@ -1,226 +1,388 @@
 <!DOCTYPE html>
 <html lang="tr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Araç Fiyat Paneli</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <main class="container">
-      <h1>Araç Fiyat Paneli</h1>
-      <p class="subtitle">Marka ve modeli listeden seçin, ilan kaynaklarından ortalama fiyat ve %10 kârla satış fiyatını görün.</p>
 
-      <form action="/analyze" method="POST" class="panel">
-        <div class="grid">
-          <label>
-            Marka
-            <select id="brandSelect" name="brand" required data-selected-brand="<%= form.brand || '' %>">
-              <option value="">Yükleniyor...</option>
-            </select>
-          </label>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Araç Fiyat Paneli</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
 
-          <label>
-            Model
-            <select id="modelGroupSelect" required disabled>
-              <option value="">Önce marka seçin</option>
-            </select>
-          </label>
+<body>
+  <main class="container">
+    <h1>Araç Fiyat Paneli</h1>
+    <p class="subtitle">Marka ve modeli listeden seçin, ilan kaynaklarından ortalama fiyat ve %10 kârla satış fiyatını
+      görün.</p>
 
-          <label>
-            Versiyon
-            <select id="versionSelect" name="model" required disabled data-selected-version="<%= form.model || '' %>">
-              <option value="">Önce model seçin</option>
-            </select>
-          </label>
+    <form action="/analyze" method="POST" class="panel">
+      <div class="grid">
+        <label>
+          Araç Kategorisi
+          <select id="categorySelect" name="category" required>
+            <option value="otomobil" <%- (form.category==='otomobil' || !form.category) ? 'selected' : '' %>>Otomobil
+            </option>
+            <option value="arazi-suv-pick-up" <%- form.category==='arazi-suv-pick-up' ? 'selected' : '' %>>Arazi, SUV,
+              Pick-up</option>
+            <option value="minivan-panelvan" <%- form.category==='minivan-panelvan' ? 'selected' : '' %>>Minivan &
+              Panelvan</option>
+          </select>
+        </label>
 
-          <label>
-            KM
-            <input type="number" min="0" step="1000" name="km" value="<%= form.km %>" placeholder="Örn: 145000" />
-          </label>
+        <label>
+          Marka
+          <select id="brandSelect" name="brand" required data-selected-brand="<%= form.brand || '' %>">
+            <option value="">Kategori seçin...</option>
+          </select>
+        </label>
 
-          <label>
-            Değişen Parça Sayısı
-            <input type="number" min="0" name="degisenSayisi" value="<%= form.degisenSayisi %>" />
-          </label>
+        <label>
+          Model
+          <select id="modelGroupSelect" required disabled>
+            <option value="">Önce marka seçin</option>
+          </select>
+        </label>
 
-          <label>
-            Hasar Kaydı (TL)
-            <input type="number" min="0" step="1000" name="hasarKaydiTl" value="<%= form.hasarKaydiTl %>" />
-          </label>
+        <label>
+          Versiyon
+          <select id="versionSelect" name="model" required disabled data-selected-version="<%= form.model || '' %>">
+            <option value="">Önce model seçin</option>
+          </select>
+        </label>
 
-          <label>
-            Boyalı Parça Sayısı
-            <input type="number" min="0" name="boyaSayisi" value="<%= form.boyaSayisi %>" />
-          </label>
-        </div>
+        <label>
+          Yıl (Aralık veya Tek Yıl)
+          <input type="text" name="yil" value="<%= form.yil || '' %>" placeholder="Örn: 2011-2012 veya 2011" />
+        </label>
+
+        <label>
+          Vites Tipi
+          <select name="vites">
+            <option value="manuel" <%- (!form.vites || form.vites==='manuel' ) ? 'selected' : '' %>>Manuel</option>
+            <option value="otomatik" <%- form.vites==='otomatik' ? 'selected' : '' %>>Otomatik</option>
+            <option value="yari-otomatik" <%- form.vites==='yari-otomatik' ? 'selected' : '' %>>Yarı Otomatik</option>
+          </select>
+        </label>
+
+        <label>
+          KM
+          <input type="number" min="0" step="1000" name="km" value="<%= form.km %>" placeholder="Örn: 145000" />
+        </label>
+
+        <label>
+          Değişen Parça Sayısı
+          <input type="number" min="0" name="degisenSayisi" value="<%= form.degisenSayisi %>" />
+        </label>
+
+        <label>
+          Hasar Kaydı (TL)
+          <input type="number" min="0" step="1000" name="hasarKaydiTl" value="<%= form.hasarKaydiTl %>" />
+        </label>
+
+        <label>
+          Boyalı Parça Sayısı
+          <input type="number" min="0" name="boyaSayisi" value="<%= form.boyaSayisi %>" />
+        </label>
+      </div>
+
+      <%# Gizli alanlar - JS tarafından doldurulur %>
+        <input type="hidden" id="modelSlugInput" name="modelSlug" value="<%= form.modelSlug   || '' %>" />
+        <input type="hidden" id="versionSlugInput" name="versionSlug" value="<%= form.versionSlug || '' %>" />
 
         <button type="submit">Fiyat Analizi Yap</button>
-      </form>
+    </form>
 
-      <% if (error) { %>
-      <section class="alert"><%= error %></section>
-      <% } %>
-
-      <% if (result) { %>
-      <section class="panel results">
-        <h2>Sonuçlar</h2>
-        <div class="cards">
-          <article>
-            <h3>Piyasa Ortalama Fiyat</h3>
-            <strong><%= result.formatted.marketAverage %></strong>
-          </article>
-          <article>
-            <h3>Duruma Göre Düzeltilmiş</h3>
-            <strong><%= result.formatted.adjustedPrice %></strong>
-            <% if (result.adjustmentPercent !== null) { %>
-            <span><%= result.adjustmentPercent %>% düzeltme</span>
-            <% } %>
-          </article>
-          <article>
-            <h3>%10 Kârla Satış Fiyatı</h3>
-            <strong><%= result.formatted.salePriceWithProfit %></strong>
-          </article>
-        </div>
-
-        <h3>Kaynaklar</h3>
-        <ul class="sources">
-          <% result.providers.forEach((provider) => { %>
-          <li>
-            <span><%= provider.source %></span>
-            <span><%= provider.prices.length %> fiyat bulundu</span>
-            <a href="<%= provider.url %>" target="_blank" rel="noreferrer">İlanları aç</a>
-          </li>
-          <% }) %>
-        </ul>
+    <% if (error) { %>
+      <section class="alert">
+        <%= error %>
       </section>
       <% } %>
 
-      <p class="note">Not: İlan sitelerinin yapı veya erişim politikaları değiştiğinde fiyat çekme sonuçları etkilenebilir.</p>
-    </main>
+        <% if (result) { %>
+          <section class="panel results">
+            <h2>Sonuçlar</h2>
+            <div class="result-meta">
+              <% if (form.yil) { %><span>📅 <%= form.yil %> Model</span>
+                <% } %>
+                  <span>⚙️ <%= form.vites==='otomatik' ? 'Otomatik' : (form.vites==='yari-otomatik' ? 'Yarı Otomatik'
+                      : 'Manuel' ) %> Vites</span>
+            </div>
+            <div class="cards">
+              <article>
+                <h3>Piyasa Ortalama Fiyat</h3>
+                <strong>
+                  <%= result.formatted.marketAverage %>
+                </strong>
+              </article>
+              <article>
+                <h3>Duruma Göre Düzeltilmiş</h3>
+                <strong>
+                  <%= result.formatted.adjustedPrice %>
+                </strong>
+                <% if (result.adjustmentPercent !==null) { %>
+                  <span>
+                    <%= result.adjustmentPercent %>% düzeltme
+                  </span>
+                  <% } %>
+              </article>
+              <article>
+                <h3>%10 Kârla Satış Fiyatı</h3>
+                <strong>
+                  <%= result.formatted.salePriceWithProfit %>
+                </strong>
+              </article>
+            </div>
 
-    <script>
-      (function () {
-        const brandSelect = document.getElementById('brandSelect');
-        const modelGroupSelect = document.getElementById('modelGroupSelect');
-        const versionSelect = document.getElementById('versionSelect');
-        if (!brandSelect || !modelGroupSelect || !versionSelect) return;
+            <h3>Kaynaklar</h3>
+            <div class="result-providers">
+              <% result.providers.forEach(provider=> { %>
+                <div class="provider-card" data-source="<%= provider.source %>">
+                  <span class="provider-name">
+                    <%= provider.source %>
+                  </span>
+                  <div class="provider-info">
+                    <span class="price-count <%= provider.prices.length === 0 ? 'no-results' : '' %>">
+                      <%= provider.prices.length %> fiyat bulundu
+                    </span>
 
-        const selectedBrand = (brandSelect.dataset.selectedBrand || '').toLowerCase();
-        const selectedFull = (versionSelect.dataset.selectedVersion || '');
+                    <% if (provider.note==='versiyon_genisletildi' ) { %>
+                      <em>⚠️ Seçilen versiyon için ilan az, model geneline genişletildi</em>
+                      <% } %>
 
-        function renderOptions(selectEl, options, placeholder) {
-          selectEl.innerHTML = '';
-          const defaultOption = document.createElement('option');
-          defaultOption.value = '';
-          defaultOption.textContent = placeholder;
-          selectEl.appendChild(defaultOption);
-          options.forEach((item) => {
-            const option = document.createElement('option');
-            option.value = item.value;
-            option.textContent = item.label;
-            selectEl.appendChild(option);
-          });
+                        <% if (provider.expanded) { %>
+                          <em>⚠️ Bu yıl için ilan az, ±1 yıl aralığındaki ilanlar gösteriliyor</em>
+                          <% } %>
+                            <% if (provider.fallback) { %>
+                              <em>⚠️ Filtreyle ilan bulunamadı, tüm ilanlar gösteriliyor</em>
+                              <% } %>
+
+                                <a href="<%= provider.url %>" target="_blank" class="external-link">Filtrelenmiş
+                                  İlanları Aç
+                                  →</a>
+                  </div>
+                </div>
+                <% }) %>
+            </div>
+          </section>
+          <% } %>
+
+
+            <p class="note">Not: İlan sitelerinin yapı veya erişim politikaları değiştiğinde fiyat çekme sonuçları
+              etkilenebilir.</p>
+  </main>
+
+  <script>
+    (function () {
+      const categorySelect = document.getElementById('categorySelect');
+      const brandSelect = document.getElementById('brandSelect');
+      const modelGroupSelect = document.getElementById('modelGroupSelect');
+      const versionSelect = document.getElementById('versionSelect');
+      const modelSlugInput = document.getElementById('modelSlugInput');
+      const versionSlugInput = document.getElementById('versionSlugInput');
+      if (!brandSelect || !modelGroupSelect || !versionSelect || !categorySelect) return;
+
+      const selectedBrand = (brandSelect.dataset.selectedBrand || '').toLowerCase();
+      const selectedFull = (versionSelect.dataset.selectedVersion || '');
+
+      let currentBrand = '';
+
+      function renderOptions(selectEl, options, placeholder) {
+        selectEl.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = placeholder;
+        selectEl.appendChild(defaultOption);
+        options.forEach((item) => {
+          const option = document.createElement('option');
+          option.value = item.value;
+          option.textContent = item.count ? `${item.label} (${item.count})` : item.label;
+          selectEl.appendChild(option);
+        });
+      }
+
+      async function loadBrands(category) {
+        brandSelect.disabled = true;
+        renderOptions(brandSelect, [], 'Markalar yükleniyor...');
+        try {
+          const response = await fetch(`/api/brands?category=${encodeURIComponent(category)}`);
+          const payload = await response.json();
+          const brands = (payload.brands || []).map((brand) => ({
+            value: brand.slug,
+            label: brand.name,
+            count: brand.count
+          }));
+          renderOptions(brandSelect, brands, 'Marka seçin');
+          brandSelect.disabled = false;
+          if (selectedBrand && category === (categorySelect.value || 'otomobil')) {
+            brandSelect.value = selectedBrand;
+            await loadModels(category, selectedBrand);
+          }
+        } catch (error) {
+          renderOptions(brandSelect, [], 'Markalar alınamadı');
+          brandSelect.disabled = true;
+        }
+      }
+
+      async function loadModels(category, brandSlug) {
+        currentBrand = brandSlug;
+        modelGroupSelect.disabled = true;
+        versionSelect.disabled = true;
+        renderOptions(modelGroupSelect, [], 'Modeller yükleniyor...');
+        renderOptions(versionSelect, [], 'Önce model seçin');
+
+        if (!brandSlug) {
+          renderOptions(modelGroupSelect, [], 'Önce marka seçin');
+          return;
         }
 
-        let cachedModels = [];
+        try {
+          const response = await fetch(`/api/models?category=${encodeURIComponent(category)}&brand=${encodeURIComponent(brandSlug)}`);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const payload = await response.json();
+          const models = payload.models || [];
 
-        // Versiyon + paketleri düzleştirilmiş tek liste olarak döndürür
-        function flattenVersions(versions) {
-          const flat = [];
-          for (const ver of (versions || [])) {
-            if ((ver.packages || []).length) {
-              for (const pkg of ver.packages) {
-                flat.push({ value: pkg.value, label: pkg.value });
-              }
-            } else {
-              flat.push({ value: ver.baseValue, label: ver.baseValue });
-            }
-          }
-          return flat;
-        }
+          const modelOptions = models.map((m) => ({ value: m.modelSlug, label: m.model, count: m.count }));
+          renderOptions(modelGroupSelect, modelOptions, modelOptions.length ? 'Model seçin' : 'Model bulunamadı');
+          modelGroupSelect.disabled = modelOptions.length === 0;
 
-        async function loadBrands() {
-          try {
-            const response = await fetch('/api/brands');
-            const payload = await response.json();
-            const brands = (payload.brands || []).map((brand) => ({
-              value: brand.slug,
-              label: brand.name
-            }));
-            renderOptions(brandSelect, brands, 'Marka seçin');
-            brandSelect.disabled = false;
-            if (selectedBrand) {
-              brandSelect.value = selectedBrand;
-              await loadModels(selectedBrand);
-            }
-          } catch (error) {
-            renderOptions(brandSelect, [], 'Markalar alınamadı');
-            brandSelect.disabled = true;
-          }
-        }
-
-        async function loadModels(brandSlug) {
-          modelGroupSelect.disabled = true;
-          versionSelect.disabled = true;
-          renderOptions(modelGroupSelect, [], 'Modeller yükleniyor...');
-          renderOptions(versionSelect, [], 'Önce model seçin');
-
-          if (!brandSlug) {
-            renderOptions(modelGroupSelect, [], 'Önce marka seçin');
-            modelGroupSelect.disabled = true;
-            return;
-          }
-
-          try {
-            const response = await fetch(`/api/models?brand=${encodeURIComponent(brandSlug)}`);
-            const payload = await response.json();
-            cachedModels = payload.models || [];
-
-            const modelOptions = cachedModels.map((m) => ({ value: m.modelSlug, label: m.model }));
-            renderOptions(modelGroupSelect, modelOptions, modelOptions.length ? 'Model seçin' : 'Model bulunamadı');
-            modelGroupSelect.disabled = modelOptions.length === 0;
-
-            // Önceki seçimi geri yükle
-            if (selectedFull) {
-              for (const m of cachedModels) {
-                const flat = flattenVersions(m.versions);
+          // Önceki seçimi geri yükle
+          if (selectedFull && selectedBrand === brandSlug) {
+            // Hangi modele ait olduğunu bulmak için versiyonları sırayla dene
+            for (const m of models) {
+              try {
+                const vRes = await fetch(`/api/versions?category=${encodeURIComponent(category)}&brand=${encodeURIComponent(brandSlug)}&model=${encodeURIComponent(m.modelSlug)}`);
+                const vPayload = await vRes.json();
+                const versions = vPayload.versions || [];
+                const flat = flattenVersions(versions);
                 if (flat.find((f) => f.value === selectedFull)) {
                   modelGroupSelect.value = m.modelSlug;
-                  loadVersionsForModel(m.modelSlug);
-                  versionSelect.value = selectedFull;
+                  await loadVersions(category, brandSlug, m.modelSlug, selectedFull);
                   return;
                 }
-              }
+              } catch (e) { /* devam */ }
             }
-          } catch (error) {
-            renderOptions(modelGroupSelect, [], 'Model listesi alınamadı');
-            modelGroupSelect.disabled = true;
+          }
+        } catch (error) {
+          renderOptions(modelGroupSelect, [], 'Model listesi alınamadı');
+          modelGroupSelect.disabled = true;
+        }
+      }
+
+      function flattenVersions(versions) {
+        const flat = [];
+        for (const ver of (versions || [])) {
+          if ((ver.packages || []).length) {
+            for (const pkg of ver.packages) {
+              flat.push({ value: pkg.value, label: pkg.value });
+            }
+          } else {
+            flat.push({ value: ver.baseValue, label: ver.baseValue });
           }
         }
+        return flat;
+      }
 
-        function loadVersionsForModel(modelSlug) {
-          const model = cachedModels.find((m) => m.modelSlug === modelSlug);
-          if (!model) {
-            renderOptions(versionSelect, [], 'Önce model seçin');
-            versionSelect.disabled = true;
-            return;
-          }
-          const flat = flattenVersions(model.versions);
-          renderOptions(versionSelect, flat, flat.length ? 'Versiyon seçin' : 'Versiyon bulunamadı');
-          versionSelect.disabled = flat.length === 0;
+      async function loadVersions(category, brandSlug, modelSlug, preselect) {
+        versionSelect.disabled = true;
+        // Versiyon değiştiğinde slug'ı sıfırla
+        if (versionSlugInput) versionSlugInput.value = '';
+        renderOptions(versionSelect, [], 'Versiyonlar yükleniyor...');
+
+        if (!modelSlug || !brandSlug) {
+          renderOptions(versionSelect, [], 'Önce model seçin');
+          return;
         }
 
-        brandSelect.addEventListener('change', (event) => {
-          loadModels(event.target.value);
-        });
+        try {
+          const response = await fetch(`/api/versions?category=${encodeURIComponent(category)}&brand=${encodeURIComponent(brandSlug)}&model=${encodeURIComponent(modelSlug)}`);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const payload = await response.json();
+          const versions = payload.versions || [];
 
-        modelGroupSelect.addEventListener('change', (event) => {
-          loadVersionsForModel(event.target.value);
-        });
+          // Her option'a hem görünen değer hem de versionSlug'ı ekle
+          versionSelect.innerHTML = '';
+          const defaultOpt = document.createElement('option');
+          defaultOpt.value = '';
+          defaultOpt.textContent = versions.length ? 'Versiyon seçin' : 'Versiyon bulunamadı';
+          versionSelect.appendChild(defaultOpt);
 
-        loadBrands();
-      })();
-    </script>
-  </body>
+          for (const ver of versions) {
+            if ((ver.packages || []).length) {
+              for (const pkg of ver.packages) {
+                const opt = document.createElement('option');
+                opt.value = pkg.value;
+                opt.dataset.slug = pkg.fullSlug || ver.versionSlug; // Paket varsa fullSlug kullan
+                opt.textContent = ver.count ? `${pkg.value} (${ver.count})` : pkg.value;
+                versionSelect.appendChild(opt);
+              }
+            } else {
+              const opt = document.createElement('option');
+              opt.value = ver.baseValue;
+              opt.dataset.slug = ver.versionSlug;
+              opt.textContent = ver.count ? `${ver.baseValue} (${ver.count})` : ver.baseValue;
+              versionSelect.appendChild(opt);
+            }
+          }
+
+          versionSelect.disabled = versions.length === 0;
+
+          if (preselect) {
+            versionSelect.value = preselect;
+            // Preselect'te de slug'ı güncelle
+            const sel = versionSelect.options[versionSelect.selectedIndex];
+            if (sel && versionSlugInput) versionSlugInput.value = sel.dataset.slug || '';
+          }
+        } catch (error) {
+          renderOptions(versionSelect, [], 'Versiyonlar alınamadı');
+          versionSelect.disabled = true;
+        }
+      }
+
+      categorySelect.addEventListener('change', (event) => {
+        loadBrands(event.target.value);
+      });
+
+      brandSelect.addEventListener('change', (event) => {
+        loadModels(categorySelect.value, event.target.value);
+      });
+
+      modelGroupSelect.addEventListener('change', (event) => {
+        if (modelSlugInput) modelSlugInput.value = event.target.value;
+        if (versionSlugInput) versionSlugInput.value = '';
+        loadVersions(categorySelect.value, currentBrand, event.target.value, null);
+      });
+
+      // Versiyon seçildiğinde versionSlug hidden field'ı güncelle
+      versionSelect.addEventListener('change', (event) => {
+        const sel = event.target.options[event.target.selectedIndex];
+        if (versionSlugInput) versionSlugInput.value = (sel && sel.dataset.slug) || '';
+        triggerPrefetch();
+      });
+
+      // KM veya Yıl değiştiğinde de prefetch tetikle
+      document.querySelector('input[name="km"]').addEventListener('blur', triggerPrefetch);
+      document.querySelector('input[name="yil"]').addEventListener('blur', triggerPrefetch);
+
+      async function triggerPrefetch() {
+        const category = categorySelect.value;
+        const brand = brandSelect.value;
+        const modelSlug = modelGroupSelect.value;
+        const versionSlug = versionSlugInput ? versionSlugInput.value : '';
+        const yil = document.querySelector('input[name="yil"]').value;
+        const km = document.querySelector('input[name="km"]').value;
+        const vites = document.querySelector('select[name="vites"]').value;
+
+        if (brand && modelSlug) {
+          const params = new URLSearchParams({
+            category, brand, modelSlug, versionSlug, yil, km, vites
+          });
+          // Sessizce çağır (hata önemli değil)
+          fetch(`/api/prefetch?${params.toString()}`).catch(() => { });
+        }
+      }
+
+      loadBrands(categorySelect.value || 'otomobil');
+    })();
+  </script>
+</body>
+
 </html>

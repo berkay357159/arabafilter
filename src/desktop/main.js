@@ -27,9 +27,9 @@ function createWindow() {
   });
 }
 
-function startDesktop() {
+async function startDesktop() {
   try {
-    const started = startServer(Number(process.env.PORT) || 3000);
+    const started = await startServer(Number(process.env.PORT) || 3000);
     server = started.server;
     port = started.port;
     createWindow();

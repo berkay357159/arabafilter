@@ -1,0 +1,9 @@
+{
+    "ignore": [
+        "*.png",
+        "*.log",
+        "sahibinden_hata_adimi.png",
+        "sahibinden_hata.png"
+    ],
+    "ext": "js,json"
+}
